@@ -1,0 +1,2 @@
+local_incdir = $(top_builddir)/exports/$(includedir)
+local_libdir = $(top_builddir)/exports/$(libdir)

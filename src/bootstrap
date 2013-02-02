@@ -1,0 +1,148 @@
+#!/bin/sh
+
+RELDATE=${RELDATE:-CURRENT}
+OUTPUT="configure.ac"
+
+sed -e "s/%RELDATE%/${RELDATE}/" > ${OUTPUT} << "EOF"
+# Process this file with autoconf to produce a configure script.
+AC_INIT(drill, %RELDATE%, Tomohisa.Tanaka@gmail.com)
+AC_CONFIG_MACRO_DIR(m4)
+AC_CONFIG_AUX_DIR(config)
+AM_CONFIG_HEADER(config.h)
+AM_INIT_AUTOMAKE
+
+# Checks for libtool.
+tagnames=
+AC_DEFUN([AC_PROG_CXX],[])
+AC_DEFUN([AC_PROG_F77],[])
+AC_PROG_LIBTOOL
+
+# Checks for arguments.
+AC_ARG_ENABLE(coverage,
+    [  --enable-coverage       enable coverage.],
+    [ENABLE_COVERAGE="yes"],[ENABLE_COVERAGE="no"])
+AM_CONDITIONAL(ENABLE_GCOV, [test "$ENABLE_COVERAGE" = "yes"])
+
+# Checks for cross-compile
+AC_CANONICAL_HOST
+AC_CANONICAL_BUILD
+AM_CONDITIONAL(CROSS_COMPILE, [test "$cross_compiling" = "yes"])
+
+# Hack for DESTDIR (1: Override prefixes while running configure)
+test "x$prefix" = xNONE && prefix=$ac_default_prefix
+test "x$exec_prefix" = xNONE && exec_prefix=$prefix
+if test "$DESTDIR" != "" ; then
+    AC_SUBST(DESTDIR)
+    orig_prefix="${prefix}"
+    prefix="${DESTDIR}${prefix}"
+    orig_exec_prefix="${exec_prefix}"
+    exec_prefix="${DESTDIR}${exec_prefix}"
+fi
+CPPFLAGS=`eval echo ${CPPFLAGS} -I${includedir}`
+LDFLAGS=`eval echo ${LDFLAGS} -L${libdir}`
+
+# Eliminate -O2 -g when CFLAGS is not given.
+if test "$ac_test_CFLAGS" = set; then
+    CFLAGS=$ac_save_CFLAGS
+else
+    CFLAGS=""
+fi
+
+# Checks for Host System OS
+case $host_os in
+freebsd*)
+    HOST_OS="freebsd"
+    ;;
+linux*)
+    HOST_OS="linux"
+    ;;
+esac
+AM_CONDITIONAL(HOST_OS_FREEBSD, [test "$HOST_OS" = "freebsd"])
+AM_CONDITIONAL(HOST_OS_LINUX, [test "$HOST_OS" = "linux"])
+
+# Checks for Host System Vednor
+case $host_vendor in
+pc|suse|unknown)
+    HOST_VENDOR="pc"
+    ;;
+esac
+AM_CONDITIONAL(HOST_VENDOR_PC, [test "$HOST_VENDOR" = "pc"])
+
+# Checks for programs.
+AC_LANG_C
+AC_PROG_CC
+AM_PROG_CC_C_O
+
+# Checks for GCC version and type of GCOV
+AC_MSG_CHECKING(gcc version)
+GCC_VERSION=`$CC -dumpversion`
+GCC_MAJOR_VERSION=${GCC_VERSION%%.*}
+GCC_VERSION=${GCC_VERSION#*.}
+GCC_MINOR_VERSION=${GCC_VERSION%%.*}
+AC_MSG_RESULT([${GCC_MAJOR_VERSION}.${GCC_MINOR_VERSION}])
+
+# Checks for libdl
+if test "$HOST_OS" = "linux" ; then
+    AC_CHECK_LIB(dl, dlerror, [], [
+        AC_MSG_ERROR([libdl.so not found.])
+    ])
+fi
+
+# Checks for libraries with pkg-config for Build System.
+PKG_PROG_PKG_CONFIG(0.24)
+if test "$PKG_CONFIG" = "" ; then
+    PKG_PROG_PKG_CONFIG()
+    if test "$PKG_CONFIG" = "" ; then
+        AC_MSG_ERROR([pkg-config not found.])
+    fi
+else
+    HAS_PKG_CONFIG_SYSROOT_DIR="yes"
+fi
+
+# Checks for libraries with pkg-config
+if test "$DESTDIR" != "" ; then 
+    m4_pattern_allow([PKG_CONFIG_SYSROOT_DIR]) 
+    m4_pattern_allow([PKG_CONFIG_LIBDIR]) 
+    d=`eval echo ${libdir}/pkgconfig`
+    if test "$PKG_CONFIG_LIBDIR" != "" ; then
+        d=$d:$PKG_CONFIG_LIBDIR
+    fi
+    export PKG_CONFIG_LIBDIR=$d
+    if test "$HAS_PKG_CONFIG_SYSROOT_DIR" = "yes" ; then
+        export PKG_CONFIG_SYSROOT_DIR=$DESTDIR
+    else
+        export CROSS_COMPILE_PREFIX=$DESTDIR
+        AC_SUBST(CROSS_COMPILE_PREFIX)
+    fi
+    PKG_CONFIG="$PKG_CONFIG --define-variable=prefix=$DESTDIR$prefix"
+fi 
+
+# Checks for typedefs, structures, and compiler characteristics.
+
+# Checks for header files.
+
+# Checks for library functions.
+
+# Hack for DESTDIR (2: Restore prefixes) 
+if test "$DESTDIR" != "" ; then 
+    prefix="${orig_prefix}" 
+    exec_prefix="${orig_exec_prefix}" 
+fi 
+
+AC_OUTPUT([
+EOF
+
+find . -name "Makefile.am" | sed -e 's|^\./||' -e 's|\.am$||' >> ${OUTPUT}
+
+cat >> ${OUTPUT} <<EOF
+])
+
+# Hack for libtool
+mv libtool libtool.orig
+sed -e '/^hardcode_libdir_flag_spec=/s/\\\$libdir/\${libdir#\$CROSS_COMPILE_PREFIX}/' < libtool.orig > libtool
+chmod 755 libtool
+EOF
+
+mkdir -p m4
+autoreconf -vif
+rm -rf autom4te*.cache

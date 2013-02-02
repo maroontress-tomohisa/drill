@@ -1,0 +1,5 @@
+END_OF_SRCS =
+
+COMMON_C_SRCS = \
+main.c
+$(END_OF_SRCS)
